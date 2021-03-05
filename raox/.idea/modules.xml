@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ProjectModuleManager">
+    <modules>
+      <module fileurl="file://$PROJECT_DIR$/assembly/assembly.iml" filepath="$PROJECT_DIR$/assembly/assembly.iml" />
+      <module fileurl="file://$PROJECT_DIR$/parent.iml" filepath="$PROJECT_DIR$/parent.iml" />
+      <module fileurl="file://$PROJECT_DIR$/ru.bmstu.rk9.rao/ru.bmstu.rk9.rao.iml" filepath="$PROJECT_DIR$/ru.bmstu.rk9.rao/ru.bmstu.rk9.rao.iml" />
+      <module fileurl="file://$PROJECT_DIR$/ru.bmstu.rk9.rao.lib/ru.bmstu.rk9.rao.lib.iml" filepath="$PROJECT_DIR$/ru.bmstu.rk9.rao.lib/ru.bmstu.rk9.rao.lib.iml" />
+      <module fileurl="file://$PROJECT_DIR$/ru.bmstu.rk9.rao.sdk/ru.bmstu.rk9.rao.sdk.iml" filepath="$PROJECT_DIR$/ru.bmstu.rk9.rao.sdk/ru.bmstu.rk9.rao.sdk.iml" />
+      <module fileurl="file://$PROJECT_DIR$/ru.bmstu.rk9.rao.tests/ru.bmstu.rk9.rao.tests.iml" filepath="$PROJECT_DIR$/ru.bmstu.rk9.rao.tests/ru.bmstu.rk9.rao.tests.iml" />
+      <module fileurl="file://$PROJECT_DIR$/ru.bmstu.rk9.rao.ui/ru.bmstu.rk9.rao.ui.iml" filepath="$PROJECT_DIR$/ru.bmstu.rk9.rao.ui/ru.bmstu.rk9.rao.ui.iml" />
+      <module fileurl="file://$PROJECT_DIR$/ru.bmstu.rk9.rao.plugins/raox-game5/ru.bmstu.rk9.raox.plugins.game5.iml" filepath="$PROJECT_DIR$/ru.bmstu.rk9.rao.plugins/raox-game5/ru.bmstu.rk9.raox.plugins.game5.iml" />
+      <module fileurl="file://$PROJECT_DIR$/ru.bmstu.rk9.rao.plugins/ru.bmstu.rk9.raox.plugins.parent.iml" filepath="$PROJECT_DIR$/ru.bmstu.rk9.rao.plugins/ru.bmstu.rk9.raox.plugins.parent.iml" />
+    </modules>
+  </component>
+</project>
