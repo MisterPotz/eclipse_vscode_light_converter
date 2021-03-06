@@ -16,9 +16,11 @@ import operator
 from pathlib import Path, PurePosixPath
 import sys
 import re
-from typing import Dict, List
+from typing import Dict, List, Set
 from os import sep
 import argparse
+import zipfile
+
 DEBUG = True
 # CONSTS
 classpath_file_subpath = ".classpath"
@@ -60,7 +62,14 @@ print(submodules_relative_paths)
 
 # MAIN CODE
 
+'''
+dependency -> exported dependencies
+'''
+class Dependency():
+    def __init__(self):
+        self.exported_dependencies : Set[Dependency] = set()
 
+def parse_dependencies_for_file(file: Path)
 ''' Works for MANIFEST.MF files
 '''
 def parse_dependencies_for_file(file: Path) -> List[str]:
@@ -68,6 +77,24 @@ def parse_dependencies_for_file(file: Path) -> List[str]:
     with file.open("r") as open_file:
         # need to find a line with "Require-Bundle"
         in_require_block = False
+        lines = open_file.readlines()
+        for index, i in enumerate(lines):
+            if (i.strip().startswith(dependency_declaration_keyword)):
+                lines = lines[index:]
+        for i in range(index, len(lines)):
+            if (re.match(r"[a-zA-Z\-]\:[\ ]*.*", i.strip())):
+                lines = lines[:i]
+        print()
+        require_block =  "".join(lines)
+        start_strip = len(dependency_declaration_keyword + dependency_declaration_word_end)
+        start_index = require_block.find(dependency_declaration_keyword)
+        require_block = require_block[start_index + start_strip:]
+
+        lines = require_block[require_block.find(dependency_declaration_keyword): ]
+        for index, line in enumerate(lines):
+            if (line.find(dependency_declaration_keyword) > 0):
+                line = line[-line.rindex(dependency_declaration_keyword + dependency_declaration_word_end):]
+            
         for line in open_file.readlines():
             if (line
                     .strip()
@@ -176,16 +203,20 @@ def leave_only_latest_versions(mapped_dependencies: Dict[str, List[str]]):
     return new_dependencies
 
 def merge_dependencies_with_classpath(file: Path, dependencies: List[str]):
-    with file.open('rb+') as opened_file:
-        byt_arr = opened_file.read()
-        insertion_index = byt_arr.find(b"\n</classpath>")
-        if (insertion_index > 0):
-            opened_file.seek(insertion_index, 0)
-            for dependency in dependencies:
-                line = '<classpathentry exported="true" kind="lib" path="{}"/>\n'
-                line = line.format(dependency)
-                line = line.encode('utf8')
-                opened_file.write(line)
+    lines = []
+    with file.open('r+') as opened_file:
+        lines = opened_file.readlines()
+    print(file, lines)
+    with file.open('w+') as opened_file:
+        i_lines = enumerate(lines)
+        i_lines = list(filter(lambda x: x[1].find("</classpath>") >= 0, i_lines))
+        index, line = i_lines[0]
+        diff = len(lines) - index
+        for dependency in dependencies:
+            line = '<classpathentry exported="true" kind="lib" path="{}"/>\n'
+            line = line.format(dependency)
+            lines.insert(len(lines) - diff, line)
+        opened_file.writelines(lines)           
 
 def pretty_print_header(adict, lengths=False):
     for key, value in adict.items():
@@ -217,18 +248,29 @@ def build_dependencies_paths_for_submodules(project_path: Path, submodules_paths
         project_path, submodules_paths)
     united_dependencies = reduce(operator.concat, dependencies.values())
     mapped_deps = map_dependencies_to_p2_repository(united_dependencies, p2_path)
-    dep_sources = leave_mostly_source_libs(mapped_deps)
-    latest_versions = leave_only_latest_versions(dep_sources)
-    return expand_modules_dependencies(dependencies, latest_versions)
+    # mapped_deps = leave_mostly_source_libs(mapped_deps)
+    mapped_deps = leave_only_latest_versions(mapped_deps)
+    return expand_modules_dependencies(dependencies, mapped_deps)
 
 def fill_classpaths_with_deps(moduls_dependencies_mapping: Dict[str, List[str]]):
     for module, module_dependencies in moduls_dependencies_mapping.items():
         module_path = Path(module)
         classpath_path = module_path.joinpath(classpath_file_subpath)
+        print(str(classpath_path))
         merge_dependencies_with_classpath(classpath_path, module_dependencies)
+
+'''modules_dependencies - {module_path : [dependency1, dependency2, ...]}
+takes given dependencies and scans them on p2 repository to get exported packages
+'''
+def consider_exported_dependencies(modules_dependencies: Dict[str, List[str]], p2_repository: Path, scan_level=2):
+    p2_repository_plugins = p2_repository.joinpath("pool/plugins")
+    def consider_exported_dependencies_per_module(module: str, dependencies: List[str]):
+        
+    return dict(map(consider_exported_dependencies_per_module, modules_dependencies))    
 
 mapped_dependencies = build_dependencies_paths_for_submodules(eclipse_project_path, submodules_relative_paths, Path(args.p2))
 print("modules dependencies mapped to p2 repository")
 pretty_print_header(mapped_dependencies, lengths=True)
 
-fill_classpaths_with_deps(mapped_dependencies)
+
+# fill_classpaths_with_deps(mapped_dependencies)
