@@ -1,8 +1,0 @@
-{
-    "java.project.referencedLibraries": [
-        "lib/**/*.jar",
-        "/home/algor/.p2/pool/plugins/org.eclipse.core.runtime.source_3.19.0.v20200724-1004.jar",
-        "/home/algor/.p2/pool/plugins/org.eclipse.core.commands.source_3.9.700.v20191217-1850.jar",
-        "/home/algor/.p2/pool/plugins/javax.inject.source_1.0.0.v20091030.jar"
-    ]
-}
