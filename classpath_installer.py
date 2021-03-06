@@ -14,10 +14,13 @@ by default -cc is true so p2 must also be given if no -ce is encounterd
 
 # CONSTS
 import argparse
+from os import sep
 from typing import Dict, List
 import re
 import sys
 from pathlib import Path, PurePosixPath
+from functools import reduce #python 3
+import operator
 classpath_file_subpath = ".classpath"
 dependency_declaration_subpath = "META-INF/MANIFEST.MF"
 dependency_declaration_keyword = "Require-Bundle"
@@ -91,7 +94,7 @@ def parse_dependencies_for_file(file: Path) -> List[str]:
 def paths_for_submodules(project_root: Path, submodules: List[str]):
     return list(map(lambda x: Path(f"{eclipse_project_path}/{x}"), submodules_relative_paths))
 
-def parse_dependencies_for_submodules(project_root: Path, submodules: List[str]):
+def parse_dependencies_for_submodules(project_root: Path, submodules: List[str]) -> Dict[str, str]:
     paths = paths_for_submodules(project_root, submodules)
     module_dependencies: Dict[str, str] = {}
 
@@ -107,8 +110,23 @@ def parse_dependencies_for_submodules(project_root: Path, submodules: List[str])
     return module_dependencies
 
 
-# def map_dependencies_to_p2(p2_path: Path, dependencies: List[str]) -> Dict[str, str]:
-#     pass
+def map_dependencies_to_p2_repository(module_dependencies: Dict[str, str], p2_repository: Path) -> Dict[str, str]:
+    set_of_all_deps = reduce(operator.concat, module_dependencies.values())
+    plugins_path = p2_repository.joinpath("pool/plugins")
+    print(set_of_all_deps)
+    all_files_iterator = plugins_path.glob(r"*.jar")
+    dependency_paths : Dict[str, List[str]]= {}
+    for i in all_files_iterator:
+        print(str(i))
+        for g in set_of_all_deps:
+            if (str(i).find(g) >= 0):
+                # a match, must save
+                if (g not in dependency_paths):
+                    dependency_paths[g] = []
+                dependency_paths[g].append(str(i))
+    for i, value in zip(dependency_paths, dependency_paths.values()):
+        print()
+        print(i, value, sep="\t")
 
 def merge_dependencies_with_classpath(file: Path, dependencies: List[str]):
     with file.open('rb+') as opened_file:
@@ -122,7 +140,7 @@ def merge_dependencies_with_classpath(file: Path, dependencies: List[str]):
             
 dependencies = parse_dependencies_for_submodules(eclipse_project_path, submodules_relative_paths)
 
-for i in paths_for_submodules(eclipse_project_path, submodules_relative_paths):
-    merge_dependencies_with_classpath(i.joinpath(classpath_file_subpath), dependencies[str(i)])
+# for i in paths_for_submodules(eclipse_project_path, submodules_relative_paths):
+#     merge_dependencies_with_classpath(i.joinpath(classpath_file_subpath), dependencies[str(i)])
 
-
+map_dependencies_to_p2_repository(dependencies, Path(args.p2))
