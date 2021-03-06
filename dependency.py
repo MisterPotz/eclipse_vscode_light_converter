@@ -24,14 +24,15 @@ class Dependency:
         return self.__str__()
 
 class Bundle:
-    def __init__(self, p2_rep: Path, name: str):
-        self.p2_rep = p2_rep
+    def __init__(self, p2_rep: str, name: str, is_tycho: True):
+        self.p2_rep = Path(p2_rep)
         self.name = name
         self.jars = []
+        self.is_tycho = is_tycho
         self.all_pattern = r"({})(\.source)?_[\.a-zA-Z0-9-]+\.jar".format(self.name)
         self.header_pattern = r"({})_[\.a-zA-Z0-9-]+\.jar".format(self.name)
         self.dependencies = []
-        print(self.all_pattern, self.header_pattern)
+        # print(self.all_pattern, self.header_pattern)
 
     def plugins_path(self):
         return self.p2_rep.joinpath("pool/plugins")

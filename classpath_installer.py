@@ -69,36 +69,6 @@ dependency -> exported dependencies
 def paths_for_submodules(project_root: Path, submodules: List[str]):
     return list(map(lambda x: Path(f"{project_root}/{x}"), submodules))
 
-def parse_dependencies_for_submodules(project_root: Path, submodules: List[str]) -> Dict[str, List[str]]:
-    paths = paths_for_submodules(project_root, submodules)
-    modules_dependencies: Dict[str, List[str]] = {}
-
-    for i in paths:
-        dependency_file = i.joinpath(dependency_declaration_subpath)
-        lines = []
-        with dependency_file.open('r') as file:
-            lines = file.readlines()
-        i_dependencies = parsers.parse_manifest_file_lines(lines)
-        modules_dependencies[str(i)] = i_dependencies
-
-    return modules_dependencies
-
-'''Accepts merged list of dependencies
-'''
-def map_dependencies_to_p2_repository(module_dependencies: List[str], p2_repository: Path) -> Dict[str, List[str]]:
-    set_of_all_deps = module_dependencies
-    plugins_path = p2_repository.joinpath("pool/plugins")
-    all_files_iterator = plugins_path.glob(r"*.jar")
-    dependency_paths: Dict[str, List[str]] = {}
-    for i in all_files_iterator:
-        for g in set_of_all_deps:
-            if (str(i).find(g) >= 0):
-                # a match, must save
-                if (g not in dependency_paths):
-                    dependency_paths[g] = []
-                dependency_paths[g].append(str(i))
-    return dependency_paths
-
 def dependency_base_name(dependency: str): 
     if (dependency.find("source") > 0):
         return dependency[:dependency.find(".source")]
@@ -191,34 +161,9 @@ def expand_modules_dependencies(modules_dependencies: Dict[str, List[str]], depe
         mapped_module_dependencies[module] = expanded_module_dependencies
     return mapped_module_dependencies
 
-def build_dependencies_paths_for_submodules(project_path: Path, submodules_paths: List[Path], p2_path: Path):
-    dependencies = parse_dependencies_for_submodules(
-        project_path, submodules_paths)
-    united_dependencies = reduce(operator.concat, dependencies.values())
-    mapped_deps = map_dependencies_to_p2_repository(united_dependencies, p2_path)
-    # mapped_deps = leave_mostly_source_libs(mapped_deps)
-    mapped_deps = leave_only_latest_versions(mapped_deps)
-    return expand_modules_dependencies(dependencies, mapped_deps)
-
 def fill_classpaths_with_deps(moduls_dependencies_mapping: Dict[str, List[str]]):
     for module, module_dependencies in moduls_dependencies_mapping.items():
         module_path = Path(module)
         classpath_path = module_path.joinpath(classpath_file_subpath)
         print(str(classpath_path))
         merge_dependencies_with_classpath(classpath_path, module_dependencies)
-
-'''modules_dependencies - {module_path : [dependency1, dependency2, ...]}
-takes given dependencies and scans them on p2 repository to get exported packages
-'''
-def consider_exported_dependencies(modules_dependencies: Dict[str, List[str]], p2_repository: Path, scan_level=2):
-    p2_repository_plugins = p2_repository.joinpath("pool/plugins")
-    def consider_exported_dependencies_per_module(module: str, dependencies: List[str]):
-        
-    return dict(map(consider_exported_dependencies_per_module, modules_dependencies))    
-
-mapped_dependencies = build_dependencies_paths_for_submodules(eclipse_project_path, submodules_relative_paths, Path(args.p2))
-print("modules dependencies mapped to p2 repository")
-pretty_print_header(mapped_dependencies, lengths=True)
-
-
-# fill_classpaths_with_deps(mapped_dependencies)
