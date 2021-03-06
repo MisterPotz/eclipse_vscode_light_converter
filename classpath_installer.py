@@ -11,16 +11,16 @@ if -ce is set, will definitely convert back to eclipse format
 by default -cc is true so p2 must also be given if no -ce is encounterd
 
 """
-
-# CONSTS
-import argparse
-from os import sep
-from typing import Dict, List
-import re
-import sys
-from pathlib import Path, PurePosixPath
-from functools import reduce #python 3
+from functools import reduce  # python 3
 import operator
+from pathlib import Path, PurePosixPath
+import sys
+import re
+from typing import Dict, List
+from os import sep
+import argparse
+DEBUG = True
+# CONSTS
 classpath_file_subpath = ".classpath"
 dependency_declaration_subpath = "META-INF/MANIFEST.MF"
 dependency_declaration_keyword = "Require-Bundle"
@@ -48,7 +48,7 @@ print("eclipse project path {} \n submodules relative paths {} \n p2 repository 
     args.p2,
     to_code
 ))
-assert to_code and args.p2 is not None, "Tried to convert to code format but no path to p2 repository was given" 
+assert to_code and args.p2 is not None, "Tried to convert to code format but no path to p2 repository was given"
 
 # PREPARE THE INPUT
 eclipse_project_path = args.eclipse_project_path
@@ -59,6 +59,7 @@ submodules_relative_paths = list(
 print(submodules_relative_paths)
 
 # MAIN CODE
+
 
 def parse_dependencies_for_file(file: Path) -> List[str]:
     lines_to_parse = []
@@ -91,8 +92,10 @@ def parse_dependencies_for_file(file: Path) -> List[str]:
                     return lines_to_parse
     return lines_to_parse
 
+
 def paths_for_submodules(project_root: Path, submodules: List[str]):
     return list(map(lambda x: Path(f"{eclipse_project_path}/{x}"), submodules_relative_paths))
+
 
 def parse_dependencies_for_submodules(project_root: Path, submodules: List[str]) -> Dict[str, str]:
     paths = paths_for_submodules(project_root, submodules)
@@ -110,12 +113,12 @@ def parse_dependencies_for_submodules(project_root: Path, submodules: List[str])
     return module_dependencies
 
 
-def map_dependencies_to_p2_repository(module_dependencies: Dict[str, str], p2_repository: Path) -> Dict[str, str]:
+def map_dependencies_to_p2_repository(module_dependencies: Dict[str, str], p2_repository: Path) -> Dict[str, List[str]]:
     set_of_all_deps = reduce(operator.concat, module_dependencies.values())
     plugins_path = p2_repository.joinpath("pool/plugins")
     print(set_of_all_deps)
     all_files_iterator = plugins_path.glob(r"*.jar")
-    dependency_paths : Dict[str, List[str]]= {}
+    dependency_paths: Dict[str, List[str]] = {}
     for i in all_files_iterator:
         print(str(i))
         for g in set_of_all_deps:
@@ -124,9 +127,61 @@ def map_dependencies_to_p2_repository(module_dependencies: Dict[str, str], p2_re
                 if (g not in dependency_paths):
                     dependency_paths[g] = []
                 dependency_paths[g].append(str(i))
-    for i, value in zip(dependency_paths, dependency_paths.values()):
+    for i, value in dependency_paths.items():
         print()
         print(i, value, sep="\t")
+    return dependency_paths
+
+def dependency_base_name(dependency: str): 
+    if (dependency.find("source") > 0):
+        return dependency[:dependency.find(".source")]
+    else:
+        return dependency[:dependency.rfind("_")]
+
+def leave_mostly_source_libs(mapped_dependencies: Dict[str, List[str]]):
+    new_dependencies = {}
+    for key, value in mapped_dependencies.items():
+        value_copy = value.copy()
+        only_with_source = list(
+            filter(lambda x: x.find("source") > 0, value_copy))
+        only_without_source = set(
+            filter(lambda x: x.find("source") < 0, value_copy))
+        for i in only_with_source:
+            base_name = dependency_base_name(i)
+            for g in list(only_without_source):
+                if (g.startswith(base_name)):
+                    # if the same non-source lib is encountered, wipe it out from non-sources array, it is not necessary
+                    only_without_source.remove(g)
+        # if some libraries in non-sources are still left there, it means that no sources for them were found and they should be appended to deps
+        # if (DEBUG):
+        #     only_with_source = list(
+        #         map(lambda x: x[len("/home/algor/.p2/pool/plugins/"):], only_with_source))
+        new_value = [only_with_source, list(only_without_source)]
+        new_dependencies[key] = list(reduce(operator.concat, new_value))
+    return new_dependencies
+
+def leave_only_latest_versions(mapped_dependencies: Dict[str, List[str]]):
+    new_dependencies = {}
+    def is_in_set(dependency: str):
+        for i in new_dependencies:
+            if (dependency_base_name(i) == dependency_base_name(dependency)):
+                return (True, i)
+        return (False, None)
+    def version_of_dependency(dependency: str):
+        return dependency[dependency.rfind("_") + 1:]
+
+    for key, value in mapped_dependencies.items():
+        dependencies_set = set()
+        for i in value:
+            in_set, dep_in_set = is_in_set(i)
+            # remove dependency with smaller version and add new with the latest version
+            if in_set and version_of_dependency(i) > version_of_dependency(dep_in_set):
+                dependencies_set.remove(dep_in_set)
+                dependencies_set.add(i)
+            else:
+                dependencies_set.add(i)
+        new_dependencies[key] = list(dependencies_set)
+    return new_dependencies
 
 def merge_dependencies_with_classpath(file: Path, dependencies: List[str]):
     with file.open('rb+') as opened_file:
@@ -137,10 +192,17 @@ def merge_dependencies_with_classpath(file: Path, dependencies: List[str]):
             for dependency in dependencies:
                 line = '<classpathentry exported="true" kind="lib" path="thirdparty/gson/lib/gson-2.6.2.jar"/>'
                 opened_file.write("clas")
-            
-dependencies = parse_dependencies_for_submodules(eclipse_project_path, submodules_relative_paths)
+
+
+dependencies = parse_dependencies_for_submodules(
+    eclipse_project_path, submodules_relative_paths)
 
 # for i in paths_for_submodules(eclipse_project_path, submodules_relative_paths):
 #     merge_dependencies_with_classpath(i.joinpath(classpath_file_subpath), dependencies[str(i)])
 
-map_dependencies_to_p2_repository(dependencies, Path(args.p2))
+mapped_deps = map_dependencies_to_p2_repository(dependencies, Path(args.p2))
+dep_sources = leave_mostly_source_libs(mapped_deps)
+latest_versions = leave_only_latest_versions(dep_sources)
+
+for key, value in latest_versions.items():
+    print(key, value, sep="\t")
