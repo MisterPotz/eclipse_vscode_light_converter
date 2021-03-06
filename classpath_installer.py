@@ -106,18 +106,23 @@ def parse_dependencies_for_submodules(project_root: Path, submodules: List[str])
             print("\t" + string)
     return module_dependencies
 
-def merge_dependencies_with_classpath(file: Path, dependencies: List[str] = None):
+
+# def map_dependencies_to_p2(p2_path: Path, dependencies: List[str]) -> Dict[str, str]:
+#     pass
+
+def merge_dependencies_with_classpath(file: Path, dependencies: List[str]):
     with file.open('rb+') as opened_file:
         byt_arr = opened_file.read()
-        insertion_index = byt_arr.find("</classpath>")
+        insertion_index = byt_arr.find(b"</classpath>")
         if (insertion_index > 0):
             opened_file.seek(insertion_index - 1, 0)
-            opened_file.writelines(dependencies)
+            for dependency in dependencies:
+                line = '<classpathentry exported="true" kind="lib" path="thirdparty/gson/lib/gson-2.6.2.jar"/>'
+                opened_file.write("clas")
             
-parse_dependencies_for_submodules(eclipse_project_path, submodules_relative_paths)
+dependencies = parse_dependencies_for_submodules(eclipse_project_path, submodules_relative_paths)
 
 for i in paths_for_submodules(eclipse_project_path, submodules_relative_paths):
-    print(i.name)
-    merge_dependencies_with_classpath(i.joinpath(classpath_file_subpath))
+    merge_dependencies_with_classpath(i.joinpath(classpath_file_subpath), dependencies[str(i)])
 
 
