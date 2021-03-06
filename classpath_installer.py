@@ -61,6 +61,8 @@ print(submodules_relative_paths)
 # MAIN CODE
 
 
+''' Works for MANIFEST.MF files
+'''
 def parse_dependencies_for_file(file: Path) -> List[str]:
     lines_to_parse = []
     with file.open("r") as open_file:
@@ -92,44 +94,34 @@ def parse_dependencies_for_file(file: Path) -> List[str]:
                     return lines_to_parse
     return lines_to_parse
 
-
 def paths_for_submodules(project_root: Path, submodules: List[str]):
     return list(map(lambda x: Path(f"{eclipse_project_path}/{x}"), submodules_relative_paths))
 
-
-def parse_dependencies_for_submodules(project_root: Path, submodules: List[str]) -> Dict[str, str]:
+def parse_dependencies_for_submodules(project_root: Path, submodules: List[str]) -> Dict[str, List[str]]:
     paths = paths_for_submodules(project_root, submodules)
-    module_dependencies: Dict[str, str] = {}
+    modules_dependencies: Dict[str, List[str]] = {}
 
     for i in paths:
         dependency_file = i.joinpath(dependency_declaration_subpath)
         i_dependencies = (parse_dependencies_for_file(dependency_file))
-        module_dependencies[str(i)] = i_dependencies
+        modules_dependencies[str(i)] = i_dependencies
 
-    for key, value in zip(module_dependencies, module_dependencies.values()):
-        print(key)
-        for string in value:
-            print("\t" + string)
-    return module_dependencies
+    return modules_dependencies
 
-
-def map_dependencies_to_p2_repository(module_dependencies: Dict[str, str], p2_repository: Path) -> Dict[str, List[str]]:
-    set_of_all_deps = reduce(operator.concat, module_dependencies.values())
+'''Accepts merged list of dependencies
+'''
+def map_dependencies_to_p2_repository(module_dependencies: List[str], p2_repository: Path) -> Dict[str, List[str]]:
+    set_of_all_deps = module_dependencies
     plugins_path = p2_repository.joinpath("pool/plugins")
-    print(set_of_all_deps)
     all_files_iterator = plugins_path.glob(r"*.jar")
     dependency_paths: Dict[str, List[str]] = {}
     for i in all_files_iterator:
-        print(str(i))
         for g in set_of_all_deps:
             if (str(i).find(g) >= 0):
                 # a match, must save
                 if (g not in dependency_paths):
                     dependency_paths[g] = []
                 dependency_paths[g].append(str(i))
-    for i, value in dependency_paths.items():
-        print()
-        print(i, value, sep="\t")
     return dependency_paths
 
 def dependency_base_name(dependency: str): 
@@ -186,23 +178,57 @@ def leave_only_latest_versions(mapped_dependencies: Dict[str, List[str]]):
 def merge_dependencies_with_classpath(file: Path, dependencies: List[str]):
     with file.open('rb+') as opened_file:
         byt_arr = opened_file.read()
-        insertion_index = byt_arr.find(b"</classpath>")
+        insertion_index = byt_arr.find(b"\n</classpath>")
         if (insertion_index > 0):
-            opened_file.seek(insertion_index - 1, 0)
+            opened_file.seek(insertion_index, 0)
             for dependency in dependencies:
-                line = '<classpathentry exported="true" kind="lib" path="thirdparty/gson/lib/gson-2.6.2.jar"/>'
-                opened_file.write("clas")
+                line = '<classpathentry exported="true" kind="lib" path="{}"/>\n'
+                line = line.format(dependency)
+                line = line.encode('utf8')
+                opened_file.write(line)
 
+def pretty_print_header(adict, lengths=False):
+    for key, value in adict.items():
+        print(key, end='\t')
+        if (lengths):
+            print(f"length: {len(value)}")
+        else:
+            print()
+        for i in value:
+            print(i)
+    print()
 
-dependencies = parse_dependencies_for_submodules(
-    eclipse_project_path, submodules_relative_paths)
+def pretty_print(arr):
+    for i in arr:
+        print(i)
 
-# for i in paths_for_submodules(eclipse_project_path, submodules_relative_paths):
-#     merge_dependencies_with_classpath(i.joinpath(classpath_file_subpath), dependencies[str(i)])
+def expand_modules_dependencies(modules_dependencies: Dict[str, List[str]], dependency_mapping: Dict[str, List[str]]):
+    mapped_module_dependencies = {}
+    
+    for module, module_dependencies in modules_dependencies.items():
+        expanded_module_dependencies = list(filter(lambda x: x in dependency_mapping, module_dependencies))
+        expanded_module_dependencies = list(map(lambda x: dependency_mapping[x], expanded_module_dependencies))
+        expanded_module_dependencies = list(reduce(operator.concat, expanded_module_dependencies))
+        mapped_module_dependencies[module] = expanded_module_dependencies
+    return mapped_module_dependencies
 
-mapped_deps = map_dependencies_to_p2_repository(dependencies, Path(args.p2))
-dep_sources = leave_mostly_source_libs(mapped_deps)
-latest_versions = leave_only_latest_versions(dep_sources)
+def build_dependencies_paths_for_submodules(project_path: Path, submodules_paths: List[Path], p2_path: Path):
+    dependencies = parse_dependencies_for_submodules(
+        project_path, submodules_paths)
+    united_dependencies = reduce(operator.concat, dependencies.values())
+    mapped_deps = map_dependencies_to_p2_repository(united_dependencies, p2_path)
+    dep_sources = leave_mostly_source_libs(mapped_deps)
+    latest_versions = leave_only_latest_versions(dep_sources)
+    return expand_modules_dependencies(dependencies, latest_versions)
 
-for key, value in latest_versions.items():
-    print(key, value, sep="\t")
+def fill_classpaths_with_deps(moduls_dependencies_mapping: Dict[str, List[str]]):
+    for module, module_dependencies in moduls_dependencies_mapping.items():
+        module_path = Path(module)
+        classpath_path = module_path.joinpath(classpath_file_subpath)
+        merge_dependencies_with_classpath(classpath_path, module_dependencies)
+
+mapped_dependencies = build_dependencies_paths_for_submodules(eclipse_project_path, submodules_relative_paths, Path(args.p2))
+print("modules dependencies mapped to p2 repository")
+pretty_print_header(mapped_dependencies, lengths=True)
+
+fill_classpaths_with_deps(mapped_dependencies)
