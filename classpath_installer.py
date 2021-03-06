@@ -20,13 +20,13 @@ from typing import Dict, List, Set
 from os import sep
 import argparse
 import zipfile
+import dependency
+import parsers
 
 DEBUG = True
 # CONSTS
 classpath_file_subpath = ".classpath"
 dependency_declaration_subpath = "META-INF/MANIFEST.MF"
-dependency_declaration_keyword = "Require-Bundle"
-dependency_declaration_word_end = ":"
 
 
 parser = argparse.ArgumentParser()
@@ -65,64 +65,9 @@ print(submodules_relative_paths)
 '''
 dependency -> exported dependencies
 '''
-class Dependency():
-    def __init__(self):
-        self.exported_dependencies : Set[Dependency] = set()
-
-def parse_dependencies_for_file(file: Path)
-''' Works for MANIFEST.MF files
-'''
-def parse_dependencies_for_file(file: Path) -> List[str]:
-    lines_to_parse = []
-    with file.open("r") as open_file:
-        # need to find a line with "Require-Bundle"
-        in_require_block = False
-        lines = open_file.readlines()
-        for index, i in enumerate(lines):
-            if (i.strip().startswith(dependency_declaration_keyword)):
-                lines = lines[index:]
-        for i in range(index, len(lines)):
-            if (re.match(r"[a-zA-Z\-]\:[\ ]*.*", i.strip())):
-                lines = lines[:i]
-        print()
-        require_block =  "".join(lines)
-        start_strip = len(dependency_declaration_keyword + dependency_declaration_word_end)
-        start_index = require_block.find(dependency_declaration_keyword)
-        require_block = require_block[start_index + start_strip:]
-
-        lines = require_block[require_block.find(dependency_declaration_keyword): ]
-        for index, line in enumerate(lines):
-            if (line.find(dependency_declaration_keyword) > 0):
-                line = line[-line.rindex(dependency_declaration_keyword + dependency_declaration_word_end):]
-            
-        for line in open_file.readlines():
-            if (line
-                    .strip()
-                    .startswith(dependency_declaration_keyword)):
-                line = line[line.index(dependency_declaration_word_end)+1:]
-                in_require_block = True
-            if (in_require_block):
-                line = line.strip()
-                possible_first_end_1 = line.find(';')
-                possible_first_end_2 = line.find(",")
-                end = min(possible_first_end_1, possible_first_end_2)
-                if (possible_first_end_1 < 0 and possible_first_end_2 < 0):
-                    # could possibly mean end of block
-                    end = len(line)
-                    in_require_block = False
-                elif (possible_first_end_1 < 0):
-                    end = possible_first_end_2
-                elif (possible_first_end_2 < 0):
-                    end = possible_first_end_1
-                    # if there is no second type of character that is definitely end of block
-                    in_require_block = False
-                lines_to_parse.append(line[:end])
-                if (not in_require_block):
-                    return lines_to_parse
-    return lines_to_parse
 
 def paths_for_submodules(project_root: Path, submodules: List[str]):
-    return list(map(lambda x: Path(f"{eclipse_project_path}/{x}"), submodules_relative_paths))
+    return list(map(lambda x: Path(f"{project_root}/{x}"), submodules))
 
 def parse_dependencies_for_submodules(project_root: Path, submodules: List[str]) -> Dict[str, List[str]]:
     paths = paths_for_submodules(project_root, submodules)
@@ -130,7 +75,10 @@ def parse_dependencies_for_submodules(project_root: Path, submodules: List[str])
 
     for i in paths:
         dependency_file = i.joinpath(dependency_declaration_subpath)
-        i_dependencies = (parse_dependencies_for_file(dependency_file))
+        lines = []
+        with dependency_file.open('r') as file:
+            lines = file.readlines()
+        i_dependencies = parsers.parse_manifest_file_lines(lines)
         modules_dependencies[str(i)] = i_dependencies
 
     return modules_dependencies
