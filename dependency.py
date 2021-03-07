@@ -8,6 +8,35 @@ manifest_path = "META-INF/MANIFEST.MF"
 dependency_declaration_keyword = "Require-Bundle"
 dependency_declaration_word_end = ":"
 
+def flat_map(f, xs):
+    ys = []
+    for x in xs:
+        ys.extend(f(x))
+    return ys
+
+def pretty_print_header(adict, lengths=False):
+    for key, value in adict.items():
+        print(key, end='\t')
+        if (lengths):
+            print(f"length: {len(value)}")
+        else:
+            print()
+        for i in value:
+            print(i)
+    print()
+
+def pretty_print(arr):
+    if isinstance(arr, set):
+        arr = list(arr)
+    for i in range(0, len(arr)):
+        if i == 0:
+            print("[")
+        print(f"\t{arr[i]}",end="")
+        if i == len(arr) - 1:
+            print()
+            print("]")
+        else:
+            print(",")
 
 class Dependency:
     def __init__(self, dependency_manifest_string):
@@ -19,11 +48,10 @@ class Dependency:
         return Bundle(p2_rep, self.name)
 
     def __str__(self):
-        return f"{self.name}"
+        return f"{self.name} : exported {int(self.exported)}"
 
     def __repr__(self):
-        return self.__str__()
-
+        return f"{self.name}"
 class Project() :
     def __init__(self, root: str, module_root: str = None) :
         self.root = root
@@ -38,7 +66,7 @@ class Project() :
         return len(found) > 0
 
 class Bundle:
-    def __init__(self, p2_rep: str, name: str, proj : Project):
+    def __init__(self, p2_rep: str, name: str, proj : Project = None):
         self.p2_rep = Path(p2_rep)
         self.name = name
         self.jars = []
@@ -75,21 +103,35 @@ class Bundle:
 
     def get_jar_with_manifest_for_p2(self):
         pattern = re.compile(self.header_pattern)
+        if len(self.jars) == 0:
+            print("could not update dependencies: jars not updated")
+            return None
         not_source = list(
             filter(lambda x: re.fullmatch(pattern, x), self.jars))
         if len(not_source) == 0:
+            print("could not update depdendencies: no jars found")
             return None
-        return self.plugins_path().joinpath(not_source[0])
+        manifest = self.plugins_path().joinpath(not_source[0])
+        if not manifest.exists():
+            print("could not update dependencies: manifest path doesn't exist")
+            return None
+        return manifest
 
     def get_manifest_file_for_eclipse(self):
         assert self.proj is not None
         path = self.proj.module_path()
         manifest = path.joinpath(manifest_path)
+        if not manifest.exists():
+            print("could not get manifest file for Eclipse project")
+            return None
         return manifest
 
     def get_manifest_file_lines(self):
         if (self.is_tycho()):
             file = self.get_jar_with_manifest_for_p2()
+            if file is None:
+                print("could not get manifest lines: no manifest found")
+                return []
             zip1 = zipfile.ZipFile(file)
             manifest_file = zipfile.Path(zip1).joinpath(manifest_path)
             lines = []
@@ -104,24 +146,76 @@ class Bundle:
 
     def update_dependencies(self):
         manifest_lines = self.get_manifest_file_lines()
-        dependencies = parse_manifest_file_lines(manifest_lines)
-        self.dependencies = dependencies
+        if len(manifest_lines) != 0:
+            dependencies = parse_manifest_file_lines(manifest_lines)
+            self.dependencies = dependencies
 
     def get_dependencies(self, show_proj_siblings=True):
-        if (show_proj_siblings):
+        if (len(self.dependencies) == 0): 
+            print("possibly the dependencies are not yet updated")
+            return []
+        if (show_proj_siblings or (not show_proj_siblings and self.is_tycho())):
             return self.dependencies
         else:
-            return list(filter(lambda x : not self.proj.is_in_root(x), self.dependencies))
+            return list(filter(lambda x : not self.proj.is_in_root(x.name), self.dependencies))
 
     def __str__(self):
-        return f"{self.name} | {len(self.jars)} jars | {len(self.dependencies)} deps"
+        exported = self.get_exported_dependencies()
+        return f"{self.name} | {len(self.jars)} jars | {len(self.dependencies)} deps | {len(exported)} exported"
 
     def __repr__(self):
-        return self.__str__()
+        exported = self.get_exported_dependencies()
+        return f"{self.name} | {len(self.jars)} jars | {len(self.dependencies)} deps | {len(exported)} exported"
+
+    def __hash__(self) -> int:
+        return hash(self.name)
+    
+    def __eq__(self, o: object) -> bool:
+        if not isinstance(o, Bundle):
+            return False
+        return self.name == o.name
+
+    def __ne__(self, o: object) -> bool:
+        return not self == o
 
     def get_exported_dependencies(self):
+        if self.dependencies is None or len(self.dependencies) == 0:
+            return []
         return list(filter(lambda x: x.exported, self.dependencies))
 
+    def update_jars_if_must(self):
+        if (self.jars is None or len(self.jars) == 0) and self.is_tycho():
+            self.update_jars()
+
+    def update_dependencies_if_must(self):
+        if self.dependencies is None or len(self.dependencies) == 0:
+            self.update_dependencies()
+    # collect the whole dependencies hierarchy 
+    def collect_exported_dependencies(self):
+        # first parse all 
+        self.update_jars_if_must()
+        self.update_dependencies_if_must()
+        exported_dependencies = []
+        if self.is_tycho():
+            exported_dependencies = self.get_exported_dependencies()
+        else :
+            # if collecting deps for eclipse project then must collect all, not only exported
+            exported_dependencies = self.dependencies
+        bundles = list(map(lambda x: x.to_bundle(self.p2_rep), exported_dependencies))
+        # pretty_print(bundles)
+        for i in bundles:
+            i.update_jars()
+            i.update_dependencies()
+        temp_arr = []
+
+        for i in bundles:
+            # print(f"dependencies for bundle: {i}")
+            i_deps = i.collect_exported_dependencies()
+            temp_arr.extend(i_deps)
+            # print(all_dependencies)
+        this_level_dependencies = set(bundles)
+        nested_dependencies = set(temp_arr)
+        return this_level_dependencies.union(list(nested_dependencies))
 
 def split_by_commas(lines):
     parenthesis_stack = []
