@@ -93,6 +93,7 @@ class Bundle:
 
     def update_jars(self):
         if  self.is_tycho() is False:
+            print("not tycho")
             return []
         plugins = self.plugins_path()
         bundles = plugins.glob("*.jar")
@@ -159,7 +160,10 @@ class Bundle:
             lines = []
             with p2_file.open('r') as file:
                 lines = file.readlines()
+            print(lines)
             return list(map(lambda x: x.decode('utf8').rstrip("\n\r"), lines))
+        else:
+            return []
 
     def update_dependencies(self):
         manifest_lines = self.get_manifest_file_lines()
@@ -168,7 +172,7 @@ class Bundle:
             dependencies = parse_manifest_file_lines(manifest_lines)
             self.dependencies = dependencies
 
-        if len(p2_info_lines) != 0:
+        if p2_info_lines is not None and len(p2_info_lines) != 0:
             dependencies = parse_p2_info_file_lines(p2_info_lines)
             self.dependencies.extend(dependencies)
 
@@ -270,7 +274,7 @@ def split_by_commas(lines):
 
 def parse_manifest_file_lines(lines) -> List[Dependency]:
     require_block_declaration_pattern = re.compile(
-        r"({})*:[\ ]*.*".format(dependency_declaration_keyword))
+        r"[\s]*({})[\s]*:[\s]*.*".format(dependency_declaration_keyword))
     block_declaration_pattern = re.compile(r"[a-zA-Z-]*:[\ ]*.*")
     first_match = False
     first_index = 0
@@ -282,6 +286,9 @@ def parse_manifest_file_lines(lines) -> List[Dependency]:
         if first_match and re.fullmatch(block_declaration_pattern, i) is not None:
             lines = lines[first_index:index]
             break
+    # no match found 
+    if not first_match:
+        return []
     lines = list(map(lambda x: x.strip(), lines))
     lines = ''.join(lines)
     lines = lines.strip()[lines.find(dependency_declaration_keyword) +
@@ -292,15 +299,15 @@ def parse_manifest_file_lines(lines) -> List[Dependency]:
     return dependencies
 
 def parse_p2_info_file_lines(lines) -> List[Dependency]:
-    requires_pattern = re.compile(r"[\s]*(requires)\.[0-9]+\.(name)[\s]*=[\s]*.*")
+    requires_pattern = re.compile(r"[\s]*(requires)\.[0-9]+\.(name)[\s]*\=[\s]*.*")
 
     requirements = list(filter(lambda x: re.fullmatch(requires_pattern, x) is not None, lines))
     def delete_keywords_part(line: str):
-        lines = line.split("=")
-        line = lines[1].strip()
-        return line
-    requirements = list(filter(lambda x: delete_keywords_part(x), requirements))
-    requirements = list(filter(lambda x: Dependency(x, is_p2_required_line=True), requirements))
+        lines1 = line.split("=")
+        line1 = lines1[1].strip()
+        return line1
+    requirements = list(map(lambda x: delete_keywords_part(x), requirements))
+    requirements = list(map(lambda x: Dependency(x, is_p2_required_line=True), requirements))
     return requirements
 
 def merge_dependencies_with_classpath(file: Path, dependencies: List[str]):
@@ -337,3 +344,67 @@ Require-Bundle: org.eclipse.emf.ecore.xmi;bundle-version="2.16.0";visi
  tional,org.eclipse.equinox.common;bundle-version="3.9.0"
 Bundle-ManifestVersion: 2
 """.split("\n")
+
+
+test_deps1="""
+Manifest-Version: 1.0
+Automatic-Module-Name: org.eclipse.swt
+Bundle-SymbolicName: org.eclipse.swt; singleton:=true
+Bundle-ManifestVersion: 2
+Bundle-RequiredExecutionEnvironment: JavaSE-1.8
+Eclipse-SourceReferences: scm:git:git://git.eclipse.org/gitroot/platfo
+ rm/eclipse.platform.swt.git;path="bundles/org.eclipse.swt";tag="I2020
+ 0831-0600";commitId=e17fs8602defb4c167e3c86b836448daea6cab383
+Bundle-Vendor: %providerName
+DynamicImport-Package: org.eclipse.swt.accessibility2
+Eclipse-ExtensibleAPI: true
+Export-Package: org.eclipse.swt,org.eclipse.swt.accessibility,org.ecli
+ pse.swt.awt,org.eclipse.swt.browser,org.eclipse.swt.custom,org.eclips
+ e.swt.dnd,org.eclipse.swt.events,org.eclipse.swt.graphics,org.eclipse
+ .swt.layout,org.eclipse.swt.opengl,org.eclipse.swt.printing,org.eclip
+ se.swt.program,org.eclipse.swt.widgets,org.eclipse.swt.internal; x-fr
+ iends:="org.eclipse.ui",org.eclipse.swt.internal.image; x-internal:=t
+ rue
+Bundle-Name: %pluginName
+Bundle-Version: 3.115.0.v20200831-1002
+Bundle-Localization: plugin
+Build-Jdk-Spec: 11
+Created-By: Maven Archiver 3.5.0
+
+Name: META-INF/p2.inf
+"""
+
+test_dep_p2 = """
+requires.1.namespace=java.package
+requires.1.name=org.eclipse.swt.accessibility2
+requires.1.optional=true
+requires.1.greedy=false
+requires.1.range=0.0.0
+
+# ensure that the applicable implementation fragment gets installed (bug 361901)
+requires.2.namespace = org.eclipse.equinox.p2.iu
+requires.2.name = org.eclipse.swt.win32.win32.x86_64
+requires.2.range = [$version$,$version$]
+requires.2.filter = (&(osgi.os=win32)(osgi.ws=win32)(osgi.arch=x86_64)(!(org.eclipse.swt.buildtime=true)))
+
+requires.3.namespace = org.eclipse.equinox.p2.iu
+requires.3.name = org.eclipse.swt.cocoa.macosx.x86_64
+requires.3.range = [$version$,$version$]
+requires.3.filter = (&(osgi.os=macosx)(osgi.ws=cocoa)(osgi.arch=x86_64)(!(org.eclipse.swt.buildtime=true)))
+
+requires.4.namespace = org.eclipse.equinox.p2.iu
+requires.4.name = org.eclipse.swt.gtk.linux.x86_64
+requires.4.range = [$version$,$version$]
+requires.4.filter = (&(osgi.os=linux)(osgi.ws=gtk)(osgi.arch=x86_64)(!(org.eclipse.swt.buildtime=true)))
+
+requires.5.namespace = org.eclipse.equinox.p2.iu
+requires.5.name = org.eclipse.swt.gtk.linux.ppc64le
+requires.5.range = [$version$,$version$]
+requires.5.filter = (&(osgi.os=linux)(osgi.ws=gtk)(osgi.arch=ppc64le)(!(org.eclipse.swt.buildtime=true)))
+
+requires.6.namespace = org.eclipse.equinox.p2.iu
+requires.6.name = org.eclipse.swt.gtk.linux.aarch64
+requires.6.range = [$version$,$version$]
+requires.6.filter = (&(osgi.os=linux)(osgi.ws=gtk)(osgi.arch=aarch64)(!(org.eclipse.swt.buildtime=true)))
+
+"""

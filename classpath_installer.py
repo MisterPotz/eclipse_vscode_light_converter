@@ -60,7 +60,7 @@ def inflate_classpaths_with_parsed_dependencies(project_path: str, modules: List
     project_bundles = list(map(lambda x : Bundle(args.p2, x.module_root, x), projects))
     for i in project_bundles:
         i.update_dependencies()
-        print(i)    
+        print(i)
         pretty_print(i.collect_exported_dependencies())
         i.merge_with_classpath()
 
