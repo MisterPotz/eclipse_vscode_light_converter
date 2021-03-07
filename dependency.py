@@ -108,13 +108,11 @@ class Bundle:
 
     def get_jar_with_manifest_for_p2(self):
         pattern = re.compile(self.header_pattern)
-        if len(self.jars) == 0:
-            print("could not update dependencies: jars not updated")
+        if self.jars is None or len(self.jars) == 0:
             return None
         not_source = list(
             filter(lambda x: re.fullmatch(pattern, x), self.jars))
-        if len(not_source) == 0:
-            print("could not update depdendencies: no jars found")
+        if self.jars is None or len(not_source) == 0:
             return None
         manifest = self.plugins_path().joinpath(not_source[0])
         if not manifest.exists():
@@ -135,7 +133,6 @@ class Bundle:
         if (self.is_tycho()):
             file = self.get_jar_with_manifest_for_p2()
             if file is None:
-                print("could not get manifest lines: no jar found")
                 return []
             zip1 = zipfile.ZipFile(file)
             manifest_file = zipfile.Path(zip1).joinpath(manifest_path)
@@ -153,14 +150,14 @@ class Bundle:
         if (self.is_tycho()):
             file = self.get_jar_with_manifest_for_p2()
             if file is None:
-                print("could not get p2 info lines: no jar found")
                 return []
             zip_jar = zipfile.ZipFile(file)
             p2_file = zipfile.Path(zip_jar).joinpath(p2_info_path)
             lines = []
+            if not p2_file.exists():
+                return []
             with p2_file.open('r') as file:
                 lines = file.readlines()
-            print(lines)
             return list(map(lambda x: x.decode('utf8').rstrip("\n\r"), lines))
         else:
             return []
@@ -239,10 +236,12 @@ class Bundle:
             # print(f"dependencies for bundle: {i}")
             i_deps = i.collect_exported_dependencies()
             temp_arr.extend(i_deps)
-            # print(all_dependencies)
         this_level_dependencies = set(bundles)
         nested_dependencies = set(temp_arr)
-        return this_level_dependencies.union(list(nested_dependencies))
+        full_set = list(this_level_dependencies.union(list(nested_dependencies)))
+        # after all dependencies found, need to filter out those without jars
+        full_set = list(filter(lambda x : x.jars is not None and len(x.jars) > 0, full_set))
+        return set(full_set)
 
     def merge_with_classpath(self):
         if self.is_tycho():
@@ -314,7 +313,6 @@ def merge_dependencies_with_classpath(file: Path, dependencies: List[str]):
     lines = []
     with file.open('r+') as opened_file:
         lines = opened_file.readlines()
-    print(file, lines)
     with file.open('w+') as opened_file:
         i_lines = enumerate(lines)
         i_lines = list(filter(lambda x: x[1].find("</classpath>") >= 0, i_lines))
