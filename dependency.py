@@ -281,6 +281,7 @@ def merge_dependencies_with_classpath(file: Path, dependencies: List[str]):
         i_lines = list(filter(lambda x: x[1].find("</classpath>") >= 0, i_lines))
         index, line = i_lines[0]
         diff = len(lines) - index
+        lines.insert(len(lines) - diff, "<!-- BELOW AUTO GEN -->\n")
         for dependency in dependencies:
             line = '<classpathentry exported="true" kind="lib" path="{}"/>\n'
             line = line.format(dependency)
