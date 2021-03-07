@@ -11,17 +11,10 @@ if -ce is set, will definitely convert back to eclipse format
 by default -cc is true so p2 must also be given if no -ce is encounterd
 
 """
-from functools import reduce  # python 3
-import operator
 from pathlib import Path, PurePosixPath
-import sys
 import re
-from typing import Dict, List, Set
-from os import sep
 import argparse
-import zipfile
 import dependency
-import parsers
 
 DEBUG = True
 # CONSTS
@@ -61,105 +54,6 @@ submodules_relative_paths = list(
 print(submodules_relative_paths)
 
 # MAIN CODE
-
-'''
-dependency -> exported dependencies
-'''
-
-def paths_for_submodules(project_root: Path, submodules: List[str]):
-    return list(map(lambda x: Path(f"{project_root}/{x}"), submodules))
-
-def dependency_base_name(dependency: str): 
-    if (dependency.find("source") > 0):
-        return dependency[:dependency.find(".source")]
-    else:
-        return dependency[:dependency.rfind("_")]
-
-def leave_mostly_source_libs(mapped_dependencies: Dict[str, List[str]]):
-    new_dependencies = {}
-    for key, value in mapped_dependencies.items():
-        value_copy = value.copy()
-        only_with_source = list(
-            filter(lambda x: x.find("source") > 0, value_copy))
-        only_without_source = set(
-            filter(lambda x: x.find("source") < 0, value_copy))
-        for i in only_with_source:
-            base_name = dependency_base_name(i)
-            for g in list(only_without_source):
-                if (g.startswith(base_name)):
-                    # if the same non-source lib is encountered, wipe it out from non-sources array, it is not necessary
-                    only_without_source.remove(g)
-        # if some libraries in non-sources are still left there, it means that no sources for them were found and they should be appended to deps
-        # if (DEBUG):
-        #     only_with_source = list(
-        #         map(lambda x: x[len("/home/algor/.p2/pool/plugins/"):], only_with_source))
-        new_value = [only_with_source, list(only_without_source)]
-        new_dependencies[key] = list(reduce(operator.concat, new_value))
-    return new_dependencies
-
-def leave_only_latest_versions(mapped_dependencies: Dict[str, List[str]]):
-    new_dependencies = {}
-    def is_in_set(dependency: str):
-        for i in new_dependencies:
-            if (dependency_base_name(i) == dependency_base_name(dependency)):
-                return (True, i)
-        return (False, None)
-    def version_of_dependency(dependency: str):
-        return dependency[dependency.rfind("_") + 1:]
-
-    for key, value in mapped_dependencies.items():
-        dependencies_set = set()
-        for i in value:
-            in_set, dep_in_set = is_in_set(i)
-            # remove dependency with smaller version and add new with the latest version
-            if in_set and version_of_dependency(i) > version_of_dependency(dep_in_set):
-                dependencies_set.remove(dep_in_set)
-                dependencies_set.add(i)
-            else:
-                dependencies_set.add(i)
-        new_dependencies[key] = list(dependencies_set)
-    return new_dependencies
-
-def merge_dependencies_with_classpath(file: Path, dependencies: List[str]):
-    lines = []
-    with file.open('r+') as opened_file:
-        lines = opened_file.readlines()
-    print(file, lines)
-    with file.open('w+') as opened_file:
-        i_lines = enumerate(lines)
-        i_lines = list(filter(lambda x: x[1].find("</classpath>") >= 0, i_lines))
-        index, line = i_lines[0]
-        diff = len(lines) - index
-        for dependency in dependencies:
-            line = '<classpathentry exported="true" kind="lib" path="{}"/>\n'
-            line = line.format(dependency)
-            lines.insert(len(lines) - diff, line)
-        opened_file.writelines(lines)           
-
-def pretty_print_header(adict, lengths=False):
-    for key, value in adict.items():
-        print(key, end='\t')
-        if (lengths):
-            print(f"length: {len(value)}")
-        else:
-            print()
-        for i in value:
-            print(i)
-    print()
-
-def pretty_print(arr):
-    for i in arr:
-        print(i)
-
-def expand_modules_dependencies(modules_dependencies: Dict[str, List[str]], dependency_mapping: Dict[str, List[str]]):
-    mapped_module_dependencies = {}
-    
-    for module, module_dependencies in modules_dependencies.items():
-        expanded_module_dependencies = list(filter(lambda x: x in dependency_mapping, module_dependencies))
-        expanded_module_dependencies = list(map(lambda x: dependency_mapping[x], expanded_module_dependencies))
-        expanded_module_dependencies = list(reduce(operator.concat, expanded_module_dependencies))
-        mapped_module_dependencies[module] = expanded_module_dependencies
-    return mapped_module_dependencies
 
 def fill_classpaths_with_deps(moduls_dependencies_mapping: Dict[str, List[str]]):
     for module, module_dependencies in moduls_dependencies_mapping.items():

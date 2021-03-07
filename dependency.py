@@ -7,6 +7,7 @@ import re
 manifest_path = "META-INF/MANIFEST.MF"
 dependency_declaration_keyword = "Require-Bundle"
 dependency_declaration_word_end = ":"
+classpath_file_subpath = ".classpath"
 
 def flat_map(f, xs):
     ys = []
@@ -64,6 +65,8 @@ class Project() :
         pattern = r".*({}).*".format(name)
         found = list(filter(lambda x : re.fullmatch(pattern, x.stem + x.suffix), self.list_root()))
         return len(found) > 0
+    def get_classpath_file(self):
+        return self.module_path().joinpath(classpath_file_subpath)
 
 class Bundle:
     def __init__(self, p2_rep: str, name: str, proj : Project = None):
@@ -199,8 +202,8 @@ class Bundle:
         if self.is_tycho():
             exported_dependencies = self.get_exported_dependencies()
         else :
-            # if collecting deps for eclipse project then must collect all, not only exported
-            exported_dependencies = self.dependencies
+            # if collecting deps for eclipse project then must collect all, not only exported, and omit sibling projects
+            exported_dependencies = list(filter(lambda x : not self.proj.is_in_root(x.name), self.dependencies))
         bundles = list(map(lambda x: x.to_bundle(self.p2_rep), exported_dependencies))
         # pretty_print(bundles)
         for i in bundles:
@@ -216,6 +219,16 @@ class Bundle:
         this_level_dependencies = set(bundles)
         nested_dependencies = set(temp_arr)
         return this_level_dependencies.union(list(nested_dependencies))
+
+    def merge_with_classpath(self):
+        if self.is_tycho():
+            return
+        classpath_file = self.proj.get_classpath_file()
+        # if is eclipse project
+        dependencies = list(self.collect_exported_dependencies())
+        # convert to jars
+        dependencies = flat_map(lambda x: x.jars_paths(), dependencies)
+        merge_dependencies_with_classpath(classpath_file, dependencies)
 
 def split_by_commas(lines):
     parenthesis_stack = []
@@ -258,6 +271,21 @@ def parse_manifest_file_lines(lines) -> List[Dependency]:
     dependencies = list(map(lambda x: Dependency(x.strip()), lines))
     return dependencies
 
+def merge_dependencies_with_classpath(file: Path, dependencies: List[str]):
+    lines = []
+    with file.open('r+') as opened_file:
+        lines = opened_file.readlines()
+    print(file, lines)
+    with file.open('w+') as opened_file:
+        i_lines = enumerate(lines)
+        i_lines = list(filter(lambda x: x[1].find("</classpath>") >= 0, i_lines))
+        index, line = i_lines[0]
+        diff = len(lines) - index
+        for dependency in dependencies:
+            line = '<classpathentry exported="true" kind="lib" path="{}"/>\n'
+            line = line.format(dependency)
+            lines.insert(len(lines) - diff, line)
+        opened_file.writelines(lines)           
 
 test_deps = """
 Require-Bundle: org.eclipse.emf.ecore.xmi;bundle-version="2.16.0";visi
