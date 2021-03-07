@@ -8,6 +8,7 @@ manifest_path = "META-INF/MANIFEST.MF"
 dependency_declaration_keyword = "Require-Bundle"
 dependency_declaration_word_end = ":"
 
+
 class Dependency:
     def __init__(self, dependency_manifest_string):
         params = dependency_manifest_string.split(';')
@@ -18,21 +19,38 @@ class Dependency:
         return Bundle(p2_rep, self.name)
 
     def __str__(self):
-        return f"{self.name} : exp {self.exported}"
+        return f"{self.name}"
 
     def __repr__(self):
         return self.__str__()
 
+class Project() :
+    def __init__(self, root: str, module_root: str = None) :
+        self.root = root
+        self.module_root = module_root
+    def module_path(self):
+        return Path(self.root).joinpath(self.module_root)
+    def list_root(self):
+        return Path(self.root).iterdir()
+    def is_in_root(self, name):
+        pattern = r".*({}).*".format(name)
+        found = list(filter(lambda x : re.fullmatch(pattern, x.stem + x.suffix), self.list_root()))
+        return len(found) > 0
+
 class Bundle:
-    def __init__(self, p2_rep: str, name: str, is_tycho: True):
+    def __init__(self, p2_rep: str, name: str, proj : Project):
         self.p2_rep = Path(p2_rep)
         self.name = name
         self.jars = []
-        self.is_tycho = is_tycho
-        self.all_pattern = r"({})(\.source)?_[\.a-zA-Z0-9-]+\.jar".format(self.name)
+        self.proj = proj
+        self.all_pattern = r"({})(\.source)?_[\.a-zA-Z0-9-]+\.jar".format(
+            self.name)
         self.header_pattern = r"({})_[\.a-zA-Z0-9-]+\.jar".format(self.name)
         self.dependencies = []
         # print(self.all_pattern, self.header_pattern)
+
+    def is_tycho(self):
+        return self.proj is None
 
     def plugins_path(self):
         return self.p2_rep.joinpath("pool/plugins")
@@ -42,63 +60,91 @@ class Bundle:
         return list(map(lambda x: plugins.joinpath(x), self.jars))
 
     def update_jars(self):
+        if  self.is_tycho() is False:
+            return []
         plugins = self.plugins_path()
         bundles = plugins.glob("*.jar")
         bundles = list(bundles)
-        jars = list(filter(lambda x: re.fullmatch(self.all_pattern, x.stem + x.suffix) is not None, bundles))
+        jars = list(filter(lambda x: re.fullmatch(
+            self.all_pattern, x.stem + x.suffix) is not None, bundles))
         jars = list(map(lambda x: str(x.stem + x.suffix), jars))
         self.jars = jars
 
-    def get_manifest_file(self):
+    '''Looks for a jar that is named like the given name in the given p2 repository 
+    '''
+
+    def get_jar_with_manifest_for_p2(self):
         pattern = re.compile(self.header_pattern)
-        not_source = list(filter(lambda x : re.fullmatch(pattern, x), self.jars))
+        not_source = list(
+            filter(lambda x: re.fullmatch(pattern, x), self.jars))
         if len(not_source) == 0:
             return None
         return self.plugins_path().joinpath(not_source[0])
 
+    def get_manifest_file_for_eclipse(self):
+        assert self.proj is not None
+        path = self.proj.module_path()
+        manifest = path.joinpath(manifest_path)
+        return manifest
+
     def get_manifest_file_lines(self):
-        file = self.get_manifest_file()
-        zip1 = zipfile.ZipFile(file)
-        manifest_file = zipfile.Path(zip1).joinpath(manifest_path)
-        lines = []
-        with manifest_file.open('r') as file:
-            lines = file.readlines()
-        return list(map(lambda x : x.decode('utf8').rstrip("\n\r"), lines))
+        if (self.is_tycho()):
+            file = self.get_jar_with_manifest_for_p2()
+            zip1 = zipfile.ZipFile(file)
+            manifest_file = zipfile.Path(zip1).joinpath(manifest_path)
+            lines = []
+            with manifest_file.open('r') as file:
+                lines = file.readlines()
+            return list(map(lambda x: x.decode('utf8').rstrip("\n\r"), lines))
+        else:
+            manifest_file = self.get_manifest_file_for_eclipse()
+            with manifest_file.open('r') as file:
+                lines = file.readlines()
+            return list(map(lambda x: x.strip(), lines))
 
     def update_dependencies(self):
         manifest_lines = self.get_manifest_file_lines()
         dependencies = parse_manifest_file_lines(manifest_lines)
         self.dependencies = dependencies
 
+    def get_dependencies(self, show_proj_siblings=True):
+        if (show_proj_siblings):
+            return self.dependencies
+        else:
+            return list(filter(lambda x : not self.proj.is_in_root(x), self.dependencies))
+
     def __str__(self):
         return f"{self.name} | {len(self.jars)} jars | {len(self.dependencies)} deps"
-    
+
     def __repr__(self):
         return self.__str__()
 
     def get_exported_dependencies(self):
-        return list(filter(lambda x : x.exported, self.dependencies))
+        return list(filter(lambda x: x.exported, self.dependencies))
 
-def split_by_commas(lines): 
-        parenthesis_stack = []
-        new_lines = []
-        last_index = 0
-        for index, i in enumerate(lines):
-            if (i == '"'):
-                if (len(parenthesis_stack) > 0):
-                    parenthesis_stack.pop()
-                else:
-                    parenthesis_stack.append(i)
-            elif (i == ','):
-                if len(parenthesis_stack) == 0:
-                    new_lines.append(lines[last_index:index].strip())
-                    last_index = index + 1
-        new_lines.append(lines[last_index:].strip())
-        return new_lines
+
+def split_by_commas(lines):
+    parenthesis_stack = []
+    new_lines = []
+    last_index = 0
+    for index, i in enumerate(lines):
+        if (i == '"'):
+            if (len(parenthesis_stack) > 0):
+                parenthesis_stack.pop()
+            else:
+                parenthesis_stack.append(i)
+        elif (i == ','):
+            if len(parenthesis_stack) == 0:
+                new_lines.append(lines[last_index:index].strip())
+                last_index = index + 1
+    new_lines.append(lines[last_index:].strip())
+    return new_lines
+
 
 def parse_manifest_file_lines(lines) -> List[Dependency]:
-    require_block_declaration_pattern = re.compile(r"({})*:[\ ]*.*".format(dependency_declaration_keyword))
-    block_declaration_pattern = re.compile(r"[a-zA-Z-]*:[\ ]*.*") 
+    require_block_declaration_pattern = re.compile(
+        r"({})*:[\ ]*.*".format(dependency_declaration_keyword))
+    block_declaration_pattern = re.compile(r"[a-zA-Z-]*:[\ ]*.*")
     first_match = False
     first_index = 0
     for index, i in enumerate(lines):
@@ -111,7 +157,8 @@ def parse_manifest_file_lines(lines) -> List[Dependency]:
             break
     lines = list(map(lambda x: x.strip(), lines))
     lines = ''.join(lines)
-    lines = lines.strip()[lines.find(dependency_declaration_keyword) + len(dependency_declaration_keyword + dependency_declaration_word_end):]
+    lines = lines.strip()[lines.find(dependency_declaration_keyword) +
+                          len(dependency_declaration_keyword + dependency_declaration_word_end):]
     lines = split_by_commas(lines)
     # can be case when ',' was inside brackets
     dependencies = list(map(lambda x: Dependency(x.strip()), lines))
