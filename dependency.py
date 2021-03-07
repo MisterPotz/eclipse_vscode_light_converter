@@ -5,6 +5,7 @@ import zipfile
 import re
 
 manifest_path = "META-INF/MANIFEST.MF"
+p2_info_path = "META-INF/p2.inf"
 dependency_declaration_keyword = "Require-Bundle"
 dependency_declaration_word_end = ":"
 classpath_file_subpath = ".classpath"
@@ -40,10 +41,10 @@ def pretty_print(arr):
             print(",")
 
 class Dependency:
-    def __init__(self, dependency_manifest_string):
+    def __init__(self, dependency_manifest_string, is_p2_required_line=False):
         params = dependency_manifest_string.split(';')
         self.name = params[0].strip()
-        self.exported = dependency_manifest_string.find("reexport") > 0
+        self.exported = dependency_manifest_string.find("reexport") > 0 or is_p2_required_line
 
     def to_bundle(self, p2_rep: Path):
         return Bundle(p2_rep, self.name)
@@ -133,7 +134,7 @@ class Bundle:
         if (self.is_tycho()):
             file = self.get_jar_with_manifest_for_p2()
             if file is None:
-                print("could not get manifest lines: no manifest found")
+                print("could not get manifest lines: no jar found")
                 return []
             zip1 = zipfile.ZipFile(file)
             manifest_file = zipfile.Path(zip1).joinpath(manifest_path)
@@ -147,11 +148,29 @@ class Bundle:
                 lines = file.readlines()
             return list(map(lambda x: x.strip(), lines))
 
+    def get_p2_info_file_lines(self):
+        if (self.is_tycho()):
+            file = self.get_jar_with_manifest_for_p2()
+            if file is None:
+                print("could not get p2 info lines: no jar found")
+                return []
+            zip_jar = zipfile.ZipFile(file)
+            p2_file = zipfile.Path(zip_jar).joinpath(p2_info_path)
+            lines = []
+            with p2_file.open('r') as file:
+                lines = file.readlines()
+            return list(map(lambda x: x.decode('utf8').rstrip("\n\r"), lines))
+
     def update_dependencies(self):
         manifest_lines = self.get_manifest_file_lines()
+        p2_info_lines = self.get_p2_info_file_lines()
         if len(manifest_lines) != 0:
             dependencies = parse_manifest_file_lines(manifest_lines)
             self.dependencies = dependencies
+
+        if len(p2_info_lines) != 0:
+            dependencies = parse_p2_info_file_lines(p2_info_lines)
+            self.dependencies.extend(dependencies)
 
     def get_dependencies(self, show_proj_siblings=True):
         if (len(self.dependencies) == 0): 
@@ -193,6 +212,7 @@ class Bundle:
     def update_dependencies_if_must(self):
         if self.dependencies is None or len(self.dependencies) == 0:
             self.update_dependencies()
+
     # collect the whole dependencies hierarchy 
     def collect_exported_dependencies(self):
         # first parse all 
@@ -270,6 +290,18 @@ def parse_manifest_file_lines(lines) -> List[Dependency]:
     # can be case when ',' was inside brackets
     dependencies = list(map(lambda x: Dependency(x.strip()), lines))
     return dependencies
+
+def parse_p2_info_file_lines(lines) -> List[Dependency]:
+    requires_pattern = re.compile(r"[\s]*(requires)\.[0-9]+\.(name)[\s]*=[\s]*.*")
+
+    requirements = list(filter(lambda x: re.fullmatch(requires_pattern, x) is not None, lines))
+    def delete_keywords_part(line: str):
+        lines = line.split("=")
+        line = lines[1].strip()
+        return line
+    requirements = list(filter(lambda x: delete_keywords_part(x), requirements))
+    requirements = list(filter(lambda x: Dependency(x, is_p2_required_line=True), requirements))
+    return requirements
 
 def merge_dependencies_with_classpath(file: Path, dependencies: List[str]):
     lines = []

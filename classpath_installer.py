@@ -14,7 +14,7 @@ by default -cc is true so p2 must also be given if no -ce is encounterd
 from pathlib import Path, PurePosixPath
 import re
 import argparse
-import dependency
+from dependency import *
 
 DEBUG = True
 # CONSTS
@@ -55,9 +55,13 @@ print(submodules_relative_paths)
 
 # MAIN CODE
 
-def fill_classpaths_with_deps(moduls_dependencies_mapping: Dict[str, List[str]]):
-    for module, module_dependencies in moduls_dependencies_mapping.items():
-        module_path = Path(module)
-        classpath_path = module_path.joinpath(classpath_file_subpath)
-        print(str(classpath_path))
-        merge_dependencies_with_classpath(classpath_path, module_dependencies)
+def inflate_classpaths_with_parsed_dependencies(project_path: str, modules: List[str]):
+    projects = list(map(lambda x : Project(project_path, x), modules))
+    project_bundles = list(map(lambda x : Bundle(args.p2, x.module_root, x), projects))
+    for i in project_bundles:
+        i.update_dependencies()
+        print(i)    
+        pretty_print(i.collect_exported_dependencies())
+        i.merge_with_classpath()
+
+inflate_classpaths_with_parsed_dependencies(eclipse_project_path, submodules_relative_paths)
