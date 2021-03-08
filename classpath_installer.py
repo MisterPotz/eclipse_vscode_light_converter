@@ -43,7 +43,7 @@ print("eclipse project path {} \n submodules relative paths {} \n p2 repository 
     args.p2,
     to_code
 ))
-assert to_code and args.p2 is not None, "Tried to convert to code format but no path to p2 repository was given"
+assert (to_code and args.p2 is not None) or not to_code, "Tried to convert to code format but no path to p2 repository was given"
 
 # PREPARE THE INPUT
 eclipse_project_path = args.eclipse_project_path
@@ -64,4 +64,15 @@ def inflate_classpaths_with_parsed_dependencies(project_path: str, modules: List
         pretty_print(i.collect_exported_dependencies())
         i.merge_with_classpath()
 
-inflate_classpaths_with_parsed_dependencies(eclipse_project_path, submodules_relative_paths)
+def delete_autogens(project_path: str, modules: List[str]):
+    projects = list(map(lambda x : Project(project_path, x), modules))
+    project_bundles = list(map(lambda x : Bundle(args.p2, x.module_root, x), projects))
+    for i in project_bundles:
+        i.clean_classpath()
+
+# inflate_classpaths_with_parsed_dependencies(eclipse_project_path, submodules_relative_paths)
+
+if (to_code):
+    inflate_classpaths_with_parsed_dependencies(eclipse_project_path, submodules_relative_paths)
+else:
+    delete_autogens(eclipse_project_path, submodules_relative_paths)
