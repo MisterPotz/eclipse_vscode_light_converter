@@ -3,6 +3,8 @@ from pathlib import Path
 from typing import List, Set
 import zipfile
 import re
+import json
+from json import dump, load, loads, JSONDecodeError
 
 manifest_path = "META-INF/MANIFEST.MF"
 p2_info_path = "META-INF/p2.inf"
@@ -13,13 +15,15 @@ settings_file_subpath = ".settings/org.eclipse.jdt.core.prefs"
 settings_magic_line_pattern = re.compile(r".*org\.eclipse\.jdt\.core\.compiler\.problem\.forbiddenReference[\s]*=[\s]*ignore.*")
 settings_magic_line = "org.eclipse.jdt.core.compiler.problem.forbiddenReference=ignore"
 classpath_autogen_line_pattern = re.compile(r".*<!-- BELOW AUTO GEN -->.*")
+vscode_settings_folder = ".vscode/"
+vscode_settings_subpath = ".vscode/settings.json"
+vscode_settings = { "java.import.maven.enabled": False, "java.autobuild.enabled": False}
 
 def flat_map(f, xs):
     ys = []
     for x in xs:
         ys.extend(f(x))
     return ys
-
 
 def pretty_print_header(adict, lengths=False):
     for key, value in adict.items():
@@ -31,7 +35,6 @@ def pretty_print_header(adict, lengths=False):
         for i in value:
             print(i)
     print()
-
 
 def pretty_print(arr):
     if isinstance(arr, set):
@@ -473,6 +476,26 @@ def clean_classpath(file: Path):
     first_part.extend(end_part)
     with file.open('w+') as opened_file:
         opened_file.writelines(first_part)
+    
+def configure_vs_code_settings(project_path: Path):
+    dir = project_path.joinpath(vscode_settings_folder)
+    if not dir.exists():
+        dir.mkdir()
+    file = project_path.joinpath(vscode_settings_subpath)
+    jobj = json.loads("{ }")
+    if file.exists():
+        try:
+            with file.open('r') as opened_file:
+                jobj = json.load(opened_file)
+        except JSONDecodeError:
+            pass
+    else:
+        file.touch()
+    for key, value in zip(vscode_settings.keys(), vscode_settings.values()):
+        if (key not in jobj):
+            jobj[key] = value
+    with file.open('w') as writable:
+        dump(jobj, writable, indent=4)
     
 
 test_deps = """

@@ -1,0 +1,13 @@
+{
+    "anime": false,
+    "ob": true,
+    "bob": 3,
+    "glob": {
+        "animebo": true,
+        "brobro": [
+            {
+                "g": 3
+            }
+        ]
+    }
+}

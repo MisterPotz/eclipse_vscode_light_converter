@@ -67,6 +67,7 @@ def convert_eclipse_to_code(project_path1, modules: List[str], cache_folder: str
     projects = list(map(lambda x: Project(project_path1, x), modules))
     project_bundles = list(map(lambda x: Bundle(
         args.p2, x.module_root, x, cache_folder), projects))
+    configure_vs_code_settings(Path(project_path1))
     for i in project_bundles:
         i.update_dependencies()
         print(i)
