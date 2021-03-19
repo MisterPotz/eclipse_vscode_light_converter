@@ -62,17 +62,21 @@ print(submodules_relative_paths)
 
 # MAIN CODE
 
-def inflate_classpaths_with_parsed_dependencies(project_path1, modules: List[str], cache_folder: str, clean_cache=False):
+
+def convert_eclipse_to_code(project_path1, modules: List[str], cache_folder: str, clean_cache=False):
     projects = list(map(lambda x: Project(project_path1, x), modules))
     project_bundles = list(map(lambda x: Bundle(
         args.p2, x.module_root, x, cache_folder), projects))
     for i in project_bundles:
         i.update_dependencies()
         print(i)
+        # cache dependencies and merge classpath files of each submodule
         i.merge_with_classpath(clean_cache=clean_cache)
+        # need to add magic line if there is no such - makes some red highlight go away
+        i.add_magic_line_to_settings()
 
 
-def delete_autogens(project_path: str, modules: List[str]):
+def convert_code_to_eclipse(project_path: str, modules: List[str]):
     projects = list(map(lambda x: Project(project_path, x), modules))
     project_bundles = list(
         map(lambda x: Bundle(args.p2, x.module_root, x), projects))
@@ -81,7 +85,7 @@ def delete_autogens(project_path: str, modules: List[str]):
 
 
 if (to_code):
-    inflate_classpaths_with_parsed_dependencies(
+    convert_eclipse_to_code(
         eclipse_project_path, submodules_relative_paths, cache_folder, clean_cache)
 else:
-    delete_autogens(eclipse_project_path, submodules_relative_paths)
+    convert_code_to_eclipse(eclipse_project_path, submodules_relative_paths)

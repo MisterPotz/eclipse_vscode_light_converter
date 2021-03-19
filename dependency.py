@@ -9,7 +9,9 @@ p2_info_path = "META-INF/p2.inf"
 dependency_declaration_keyword = "Require-Bundle"
 dependency_declaration_word_end = ":"
 classpath_file_subpath = ".classpath"
-
+settings_file_subpath = ".settings/org.eclipse.jdt.core.prefs"
+settings_magic_line_pattern = re.compile(r".*org\.eclipse\.jdt\.core\.compiler\.problem\.forbiddenReference[\s]*=[\s]*ignore.*")
+settings_magic_line = "org.eclipse.jdt.core.compiler.problem.forbiddenReference=ignore"
 
 def flat_map(f, xs):
     ys = []
@@ -132,7 +134,6 @@ class Bundle:
 
     '''Looks for a jar that is named like the given name in the given p2 repository 
     '''
-
     def get_jar_with_manifest_for_p2(self):
         pattern = re.compile(self.header_pattern)
         if self.jars is None or len(self.jars) == 0:
@@ -328,6 +329,29 @@ class Bundle:
         for bundle in dependencies:
             bundle.update_jars()
         return dependencies
+
+    def add_magic_line_to_settings(self):
+        settings_file = self.proj.module_path().joinpath(settings_file_subpath)
+        
+        if settings_file.exists():
+            lines = []
+            with settings_file.open('r') as opened_file:
+                lines = opened_file.readlines()
+            line_is_present = False
+            for line in lines:
+                if re.fullmatch(settings_magic_line_pattern, line) is not None:
+                    line_is_present = True
+                    break
+            if not line_is_present:
+                lines.append(f"{settings_magic_line}\n")
+                with settings_file.open('w') as writable:
+                    writable.writelines(lines)
+        else:
+            settings_file.touch()
+            with settings_file.open('w') as writable:
+                lines = [f"{settings_magic_line}\n"]
+                writable.writelines(lines)
+
 
 def split_by_commas(lines):
     parenthesis_stack = []
