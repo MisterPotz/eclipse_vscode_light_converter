@@ -43,7 +43,6 @@ def pretty_print(arr):
         else:
             print(",")
 
-
 class Dependency:
     def __init__(self, dependency_manifest_string, is_p2_required_line=False):
         params = dependency_manifest_string.split(';')
@@ -59,7 +58,6 @@ class Dependency:
 
     def __repr__(self):
         return f"{self.name}"
-
 
 class Project():
     def __init__(self, root: str, module_root: str = None):
@@ -361,8 +359,8 @@ def clean_classpath(file: Path):
     print(file)
     with file.open('r+') as opened_file:
         lines = opened_file.readlines()
-    generation_start_index = 0
-    generation_end_index = 0
+    generation_start_index = -1
+    generation_end_index = -1
     end_pattern = re.compile(r".*</classpath>.*")
     machine_pattern = re.compile(r".*<!-- BELOW AUTO GEN -->.*")
     for index, line in enumerate(lines):
@@ -371,6 +369,9 @@ def clean_classpath(file: Path):
         if (re.fullmatch(end_pattern, line.strip())):
             generation_end_index = index
     print(lines)
+    # don't clean the file if no special lines were found
+    if generation_start_index == -1:
+        return
     first_part = lines[:generation_start_index]
     print(first_part)
     end_part = lines[generation_end_index:]
