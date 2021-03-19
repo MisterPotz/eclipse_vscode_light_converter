@@ -1,6 +1,6 @@
 
 from pathlib import Path
-from typing import List
+from typing import List, Set
 import zipfile
 import re
 
@@ -50,6 +50,12 @@ class Dependency:
         self.exported = dependency_manifest_string.find(
             "reexport") > 0 or is_p2_required_line
 
+    @classmethod
+    def from_file_string(cls, file_string: str):
+        cls.name = file_string
+        # True because cached dependency means its exported
+        cls.exported = True
+
     def to_bundle(self, p2_rep: Path):
         return Bundle(p2_rep, self.name)
 
@@ -58,7 +64,6 @@ class Dependency:
 
     def __repr__(self):
         return f"{self.name}"
-
 class Project():
     def __init__(self, root: str, module_root: str = None):
         self.root = root
@@ -81,7 +86,7 @@ class Project():
 
 
 class Bundle:
-    def __init__(self, p2_rep: str, name: str, proj: Project = None):
+    def __init__(self, p2_rep: str, name: str, proj: Project = None, cache_folder: str = None):
         self.p2_rep = Path(p2_rep)
         self.name = name
         self.jars = []
@@ -90,13 +95,24 @@ class Bundle:
             self.name)
         self.header_pattern = r"({})_[\.a-zA-Z0-9-]+\.jar".format(self.name)
         self.dependencies = []
+        self.cache_folder = cache_folder
         # print(self.all_pattern, self.header_pattern)
 
     def is_tycho(self):
         return self.proj is None
 
+    def cache_folder_path(self):
+        return Path(self.cache_folder)
+
+    def cache_file(self):
+        # etvsc - eclipse to vs code
+        return self.cache_folder_path().joinpath(f"{self.name}.etvsc")
+
     def plugins_path(self):
         return self.p2_rep.joinpath("pool/plugins")
+
+    def to_file_string(self):
+        return self.name
 
     def jars_paths(self):
         plugins = self.plugins_path()
@@ -226,44 +242,52 @@ class Bundle:
             self.update_dependencies()
 
     # collect the whole dependencies hierarchy
-    def collect_exported_dependencies(self):
-        # first parse all
-        self.update_jars_if_must()
-        self.update_dependencies_if_must()
+    def collect_exported_dependencies(self, clean_cache = False):
+        # first must check if cache is present because parsing all dependencies is not a fast process
         exported_dependencies = []
-        if self.is_tycho():
-            exported_dependencies = self.get_exported_dependencies()
+        if not self.is_tycho() and self.has_dependencies_cache_file() and not clean_cache:
+            return set(self.collect_exported_dependencies_from_cache())
         else:
-            # if collecting deps for eclipse project then must collect all, not only exported, and omit sibling projects
-            exported_dependencies = list(
-                filter(lambda x: not self.proj.is_in_root(x.name), self.dependencies))
-        bundles = list(map(lambda x: x.to_bundle(
-            self.p2_rep), exported_dependencies))
-        # pretty_print(bundles)
-        for i in bundles:
-            i.update_jars()
-            i.update_dependencies()
-        temp_arr = []
+            # parse all
+            self.update_jars_if_must()
+            self.update_dependencies_if_must()
+            if self.is_tycho():
+                exported_dependencies = self.get_exported_dependencies()
+            else:
+                # if collecting deps for eclipse project then must collect all, not only exported, and omit sibling projects
+                exported_dependencies = list(
+                    filter(lambda x: not self.proj.is_in_root(x.name), self.dependencies))
+            bundles = list(map(lambda x: x.to_bundle(
+                self.p2_rep), exported_dependencies))
+            # pretty_print(bundles)
+            for i in bundles:
+                i.update_jars()
+                i.update_dependencies()
+            temp_arr = []
 
-        for i in bundles:
-            # print(f"dependencies for bundle: {i}")
-            i_deps = i.collect_exported_dependencies()
-            temp_arr.extend(i_deps)
-        this_level_dependencies = set(bundles)
-        nested_dependencies = set(temp_arr)
-        full_set = list(this_level_dependencies.union(
-            list(nested_dependencies)))
-        # after all dependencies found, need to filter out those without jars
-        full_set = list(
-            filter(lambda x: x.jars is not None and len(x.jars) > 0, full_set))
-        return set(full_set)
+            for i in bundles:
+                # print(f"dependencies for bundle: {i}")
+                i_deps = i.collect_exported_dependencies()
+                temp_arr.extend(i_deps)
+            this_level_dependencies = set(bundles)
+            nested_dependencies = set(temp_arr)
+            full_set = list(this_level_dependencies.union(
+                list(nested_dependencies)))
+            # after all dependencies found, need to filter out those without jars
+            full_set = list(
+                filter(lambda x: x.jars is not None and len(x.jars) > 0, full_set))
+            return set(full_set)
 
-    def merge_with_classpath(self):
+    def merge_with_classpath(self, clean_cache=False):
+        # only if it is eclipse project
         if self.is_tycho():
             return
         classpath_file = self.proj.get_classpath_file()
-        # if is eclipse project
-        dependencies = list(self.collect_exported_dependencies())
+        # collect cached or newly parsed dependencies
+        dependencies = list(self.collect_exported_dependencies(clean_cache=clean_cache))
+        # if no cache - put into cache
+        if not self.has_dependencies_cache_file() or clean_cache:
+            self.cache_exported_dependencies(dependencies)
         # convert to jars
         dependencies = flat_map(lambda x: x.jars_paths(), dependencies)
         merge_dependencies_with_classpath(classpath_file, dependencies)
@@ -273,6 +297,37 @@ class Bundle:
             classpath_file = self.proj.get_classpath_file()
             clean_classpath(classpath_file)
 
+    def has_dependencies_cache_file(self, cache_file_given=None):
+        cache_file = None
+        if cache_file_given is not None:
+            cache_file = cache_file_given
+        else:
+            cache_file = self.cache_file()
+        return cache_file.exists() and cache_file.is_file()
+
+    def cache_exported_dependencies(self, exported_dependencies):
+        # must delete cache file if exists
+        cache_file = self.cache_file()
+        if self.has_dependencies_cache_file(cache_file_given=cache_file):
+            cache_file.unlink()
+        # fetch dependencies
+        # exported: List[Dependency] = list(self.collect_exported_dependencies())
+        # lines that will be writtent to the cache file
+        exported = list(map(lambda x: f"{x.to_file_string()}\n", exported_dependencies))
+        with cache_file.open('w') as opened_file:
+            opened_file.writelines(exported)
+    
+    def collect_exported_dependencies_from_cache(self):
+        cache_file = self.cache_file()
+        lines = []
+        with cache_file.open('r') as opened_file:
+            lines = opened_file.readlines()
+        dependencies = list(map(lambda x: x.replace("\n", ''), lines))
+        dependencies = list(filter(lambda x: len(x) != 0, dependencies))
+        dependencies = list(map(lambda x: Bundle(self.p2_rep,x), dependencies))
+        for bundle in dependencies:
+            bundle.update_jars()
+        return dependencies
 
 def split_by_commas(lines):
     parenthesis_stack = []
@@ -380,6 +435,7 @@ def clean_classpath(file: Path):
     print(first_part)
     with file.open('w+') as opened_file:
         opened_file.writelines(first_part)
+    
 
 test_deps = """
 Require-Bundle: org.eclipse.emf.ecore.xmi;bundle-version="2.16.0";visi

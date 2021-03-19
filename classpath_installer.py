@@ -33,21 +33,28 @@ parser.add_argument("-cc", "--convert_to_code", dest="to_code",
                     help="Convert given eclipse project to code", action="store_const", const=True, default=True)
 parser.add_argument("-ce", "--convert_to_eclipse", dest="to_eclipse",
                     help="Convert given 'coded' ex-eclipse project back to eclipse", action="store_const", const=True, default=False)
+parser.add_argument("-clean_cache", dest="clean_cache",
+                    action="store_const", const=True, default=False)
+parser.add_argument("-cache_path", dest="cache_folder", type=str,
+                    help="Path to the cache folder to store parsed dependencies")
 args = parser.parse_args()
 
 to_code = args.to_code and not args.to_eclipse
-
-print("eclipse project path {} \n submodules relative paths {} \n p2 repository path {} \n will convert to code {}".format(
+cache_folder = args.cache_folder
+print("eclipse project path {} \n submodules relative paths {} \n p2 repository path {} \n will convert to code {} and will clean cache {} in cache folder {}".format(
     args.eclipse_project_path,
     args.submodules_paths,
     args.p2,
-    to_code
+    to_code,
+    args.clean_cache,
+    cache_folder
 ))
 assert (to_code and args.p2 is not None) or not to_code, "Tried to convert to code format but no path to p2 repository was given"
-
+assert (cache_folder is not None or not to_code), "Cache folder must not be null if convert to code"
 # PREPARE THE INPUT
 eclipse_project_path = args.eclipse_project_path
 submodules_relative_paths = args.submodules_paths.strip().split()
+clean_cache = args.clean_cache
 submodules_relative_paths = list(
     map(lambda x: x.strip(), submodules_relative_paths))
 
@@ -55,24 +62,26 @@ print(submodules_relative_paths)
 
 # MAIN CODE
 
-def inflate_classpaths_with_parsed_dependencies(project_path: str, modules: List[str]):
-    projects = list(map(lambda x : Project(project_path, x), modules))
-    project_bundles = list(map(lambda x : Bundle(args.p2, x.module_root, x), projects))
+def inflate_classpaths_with_parsed_dependencies(project_path1, modules: List[str], cache_folder: str, clean_cache=False):
+    projects = list(map(lambda x: Project(project_path1, x), modules))
+    project_bundles = list(map(lambda x: Bundle(
+        args.p2, x.module_root, x, cache_folder), projects))
     for i in project_bundles:
         i.update_dependencies()
         print(i)
-        pretty_print(i.collect_exported_dependencies())
-        i.merge_with_classpath()
+        i.merge_with_classpath(clean_cache=clean_cache)
+
 
 def delete_autogens(project_path: str, modules: List[str]):
-    projects = list(map(lambda x : Project(project_path, x), modules))
-    project_bundles = list(map(lambda x : Bundle(args.p2, x.module_root, x), projects))
+    projects = list(map(lambda x: Project(project_path, x), modules))
+    project_bundles = list(
+        map(lambda x: Bundle(args.p2, x.module_root, x), projects))
     for i in project_bundles:
         i.clean_classpath()
 
-# inflate_classpaths_with_parsed_dependencies(eclipse_project_path, submodules_relative_paths)
 
 if (to_code):
-    inflate_classpaths_with_parsed_dependencies(eclipse_project_path, submodules_relative_paths)
+    inflate_classpaths_with_parsed_dependencies(
+        eclipse_project_path, submodules_relative_paths, cache_folder, clean_cache)
 else:
     delete_autogens(eclipse_project_path, submodules_relative_paths)
