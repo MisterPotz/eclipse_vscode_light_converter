@@ -12,6 +12,7 @@ classpath_file_subpath = ".classpath"
 settings_file_subpath = ".settings/org.eclipse.jdt.core.prefs"
 settings_magic_line_pattern = re.compile(r".*org\.eclipse\.jdt\.core\.compiler\.problem\.forbiddenReference[\s]*=[\s]*ignore.*")
 settings_magic_line = "org.eclipse.jdt.core.compiler.problem.forbiddenReference=ignore"
+classpath_autogen_line_pattern = re.compile(r".*<!-- BELOW AUTO GEN -->.*")
 
 def flat_map(f, xs):
     ys = []
@@ -279,11 +280,28 @@ class Bundle:
                 filter(lambda x: x.jars is not None and len(x.jars) > 0, full_set))
             return set(full_set)
 
+    def check_that_classpath_merged(self) -> bool :
+        classpath_file = self.proj.get_classpath_file()
+        lines = []
+        with classpath_file.open('r') as readable:
+            lines = readable.readlines()
+        for line in lines:
+            # if that line is encountered, the file is merged
+            if re.match(classpath_autogen_line_pattern, line) is not None:
+                return True
+        # not merged
+        return False
+
     def merge_with_classpath(self, clean_cache=False):
-        # only if it is eclipse project
+        # only if it is eclipse project and classpath is not merged
         if self.is_tycho():
             return
+        if self.check_that_classpath_merged():
+            print("already converted to code")
+            return
+
         classpath_file = self.proj.get_classpath_file()
+
         # collect cached or newly parsed dependencies
         dependencies = list(self.collect_exported_dependencies(clean_cache=clean_cache))
         # if no cache - put into cache
@@ -339,7 +357,7 @@ class Bundle:
                 lines = opened_file.readlines()
             line_is_present = False
             for line in lines:
-                if re.fullmatch(settings_magic_line_pattern, line) is not None:
+                if re.match(settings_magic_line_pattern, line) is not None:
                     line_is_present = True
                     break
             if not line_is_present:
@@ -435,28 +453,24 @@ def merge_dependencies_with_classpath(file: Path, dependencies: List[str]):
 
 def clean_classpath(file: Path):
     lines = []
-    print(file)
     with file.open('r+') as opened_file:
         lines = opened_file.readlines()
     generation_start_index = -1
     generation_end_index = -1
     end_pattern = re.compile(r".*</classpath>.*")
-    machine_pattern = re.compile(r".*<!-- BELOW AUTO GEN -->.*")
+    machine_pattern = classpath_autogen_line_pattern
     for index, line in enumerate(lines):
-        if re.fullmatch(machine_pattern, line.strip()):
+        if re.match(machine_pattern, line.strip()):
             generation_start_index = index
-        if (re.fullmatch(end_pattern, line.strip())):
+        if (re.match(end_pattern, line.strip())):
             generation_end_index = index
-    print(lines)
     # don't clean the file if no special lines were found
     if generation_start_index == -1:
+        print("already converted to eclipse")
         return
     first_part = lines[:generation_start_index]
-    print(first_part)
     end_part = lines[generation_end_index:]
-    print(end_part)
     first_part.extend(end_part)
-    print(first_part)
     with file.open('w+') as opened_file:
         opened_file.writelines(first_part)
     
