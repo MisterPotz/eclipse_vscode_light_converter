@@ -1,0 +1,1 @@
+python .\classpath_installer.py $HOME\Documents\GitHub\raox "ru.bmstu.rk9.rao ru.bmstu.rk9.rao.lib ru.bmstu.rk9.rao.ui" -cc -p2 $HOME/.p2 -cache_path $HOME/Documents/.eclipse_vs_code_cache/
