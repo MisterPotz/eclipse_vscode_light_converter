@@ -171,7 +171,9 @@ class Bundle:
             lines = []
             with manifest_file.open('r') as file:
                 lines = file.readlines()
-            return list(map(lambda x: x.decode('utf8').rstrip("\n\r"), lines))
+            # return list(map(lambda x: x.decode('utf8').rstrip("\n\r"), lines))
+            return list(map(lambda x: x.rstrip("\n\r"), lines))
+
         else:
             manifest_file = self.get_manifest_file_for_eclipse()
             with manifest_file.open('r') as file:
@@ -190,7 +192,8 @@ class Bundle:
                 return []
             with p2_file.open('r') as file:
                 lines = file.readlines()
-            return list(map(lambda x: x.decode('utf8').rstrip("\n\r"), lines))
+            return list(map(lambda x: x.rstrip("\n\r"), lines))
+            # return list(map(lambda x: x.decode('utf8').rstrip("\n\r"), lines))
         else:
             return []
 
